@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Công cụ Tính Thuế Thu nhập Cá nhân Việt Nam</title>
+    <style>
+        /* Ngăn cuộn ngang trên thiết bị di động */
+        html, body {
+            overflow-x: hidden; 
+        }
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 600px; 
+            margin: 30px auto; 
+            padding: 20px; 
+        }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], input[type="number"] { 
+            width: 100%; 
+            padding: 8px; 
+            border: 1px solid #ccc; 
+            border-radius: 4px; 
+            box-sizing: border-box; 
+        }
+        .button-box { text-align: center; }
+        button { padding: 10px 15px; background-color: #5cb85c; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #4cae4c; }
+        #result { margin-top: 20px; padding: 10px; background: #f9f9f9; border-radius: 4px; }
+        .breakdown { margin-top: 20px; }
+        hr { border: 0; border-top: 1px solid #eee; margin: 10px 0; }
+        ul { list-style-type: none; padding-left: 0; }
+        li { margin-bottom: 3px; }
+
+        /* Bố cục 2 cột cho phần kết quả (Áp dụng cho mọi màn hình) */
+        .breakdown > div:first-child {
+            display: flex; 
+            gap: 15px; /* Khoảng cách giữa 2 cột kết quả */
+        }
+        .breakdown > div:first-child > div {
+            flex: 1; /* Đảm bảo cả hai cột chia đều không gian */
+        }
+        
+        /* Điều chỉnh Font Size cho phần NET Salary so sánh (Hộp màu xanh/xám) */
+        .comparison-section {
+            display: flex; 
+            justify-content: space-around; 
+            align-items: center;
+        }
+
+        /* Kết quả 2023 */
+        .comparison-section div:first-child span:first-child {
+            color: #666; 
+            font-size: 20px; /* Kích thước trên desktop */
+            font-weight: bold;
+        }
+        /* Kết quả 2026 */
+        .comparison-section div:last-child span:first-child {
+            color: #007bff; 
+            font-size: 26px; /* Kích thước trên desktop */
+            font-weight: bold;
+        }
+
+        /* CSS CHO THIẾT BỊ DI ĐỘNG (Giữ 2 cột và giảm font tối đa) */
+        @media (max-width: 650px) {
+            body { 
+                max-width: 100%; 
+                margin: 0; 
+                padding: 10px;
+                font-size: 14px; /* Giảm kích thước phông chữ cơ bản */
+            }
+
+            h1 { font-size: 1.5em; }
+            h3 { font-size: 1.1em; }
+            h4 { font-size: 1em; }
+            
+            /* Kích thước font nhỏ hơn nữa cho hộp so sánh trên MOBILE */
+            .comparison-section div:first-child span:first-child {
+                 font-size: 18px !important;
+            }
+            .comparison-section div:last-child span:first-child { 
+                font-size: 22px !important;
+            }
+            
+            /* Đảm bảo input không tràn */
+             input[type="text"], input[type="number"] { 
+                font-size: 1em; 
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Công cụ Tính Thuế Thu nhập Cá nhân (TNCN)</h1>
+    <form id="tax-form">
+        <div class="form-group">
+            <label for="grossSalary">Lương Gross hàng tháng (VND)</label>
+            <input type="text" id="grossSalary" placeholder="Ví dụ: 100,000,000" oninput="formatNumber(this)">
+        </div>
+        
+        <div class="form-group">
+            <label for="insuranceBaseSalary">Lương cơ sở đóng Bảo hiểm (VND) - (Mặc định bằng Lương Gross nếu để trống)</label>
+            <input type="text" id="insuranceBaseSalary" placeholder="Ví dụ: 10,000,000" oninput="formatNumber(this)">
+        </div>
+        
+        <div class="form-group">
+            <label for="dependents">Số người phụ thuộc</label>
+            <input type="number" id="dependents" value="0" min="0" step="1">
+        </div>
+        <div class="form-group">
+            <label for="socialInsuranceRate">Tỷ lệ Bảo hiểm Xã hội BHXH (%)</label>
+            <input type="number" id="socialInsuranceRate" value="8" step="0.1">
+        </div>
+        <div class="form-group">
+            <label for="healthInsuranceRate">Tỷ lệ Bảo hiểm Y tế BHYT (%)</label>
+            <input type="number" id="healthInsuranceRate" value="1.5" step="0.1">
+        </div>
+        <div class="form-group">
+            <label for="unemploymentInsuranceRate">Tỷ lệ Bảo hiểm Thất nghiệp BHTN (%)</label>
+            <input type="number" id="unemploymentInsuranceRate" value="1" step="0.1">
+        </div>
+        <div class="button-box">
+            <button type="button" onclick="calculateTax()">Tính Thuế</button>
+        </div>
+    </form>
+    <div id="result" style="display: none;"></div>
+    <div id="breakdown" class="breakdown"></div>
+
+    <script>
+        function formatNumber(input) {
+            let value = input.value;
+            value = value.replace(/[^0-9]/g, '');
+            let formated = value.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            input.value = formated;
+        }
+
+        function parseNumber(value) {
+            return parseFloat(value.replace(/,/g, '')) || 0;
+        }
+
+        function calculateTax() {
+            const grossSalary = parseNumber(document.getElementById('grossSalary').value);
+            let userInsuranceBase = parseNumber(document.getElementById('insuranceBaseSalary').value);
+            
+            // LOGIC MỚI: Nếu Lương cơ sở đóng BH là 0 (để trống) và Lương Gross > 0, thì lấy Lương Gross làm cơ sở.
+            if (userInsuranceBase === 0 && grossSalary > 0) {
+                userInsuranceBase = grossSalary;
+            }
+
+            const dependents = parseInt(document.getElementById('dependents').value) || 0;
+            const socialInsuranceRate = parseFloat(document.getElementById('socialInsuranceRate').value) || 0;
+            const healthInsuranceRate = parseFloat(document.getElementById('healthInsuranceRate').value) || 0;
+            const unemploymentInsuranceRate = parseFloat(document.getElementById('unemploymentInsuranceRate').value) || 0;
+
+            // Thuế suất 2023 (hàng tháng)
+            const oldTaxBrackets = [
+                { min: 0, max: 5000000, rate: 0.05 }, { min: 5000000, max: 10000000, rate: 0.10 },
+                { min: 10000000, max: 18000000, rate: 0.15 }, { min: 18000000, max: 32000000, rate: 0.20 },
+                { min: 32000000, max: 52000000, rate: 0.25 }, { min: 52000000, max: 80000000, rate: 0.30 },
+                { min: 80000000, max: Infinity, rate: 0.35 }
+            ];
+
+            // Thuế suất 2026 (dự thảo, hàng tháng)
+            const newTaxBrackets = [
+                { min: 0, max: 10000000, rate: 0.05 }, { min: 10000000, max: 30000000, rate: 0.10 },
+                { min: 30000000, max: 60000000, rate: 0.2 }, { min: 60000000, max: 100000000, rate: 0.3 },
+                { min: 100000000, max: Infinity, rate: 0.35 }
+            ];
+
+            // Các khoản giảm trừ
+            const oldPersonalDeduction = 11000000; // 2023
+            const newPersonalDeduction = 15500000; // 2026
+            const oldDependentDeduction = 4400000; // 2023
+            const newDependentDeduction = 6200000; // 2026
+
+            // Mức trần đóng Bảo hiểm
+            const maxInsuranceBaseSocial = 46800000; // BHXH, BHYT
+            const maxInsuranceBaseUnemployment = 99200000; // BHTN
+
+            // Tính Lương cơ sở đóng Bảo hiểm (min của: [Input Người dùng/Lương Gross, Lương Gross, Mức trần Pháp lý])
+            const baseForSocialHealth = Math.min(userInsuranceBase, grossSalary, maxInsuranceBaseSocial);
+            const baseForUnemployment = Math.min(userInsuranceBase, grossSalary, maxInsuranceBaseUnemployment);
+
+            // Tính tiền Bảo hiểm
+            const socialInsurance = baseForSocialHealth * (socialInsuranceRate / 100);
+            const healthInsurance = baseForSocialHealth * (healthInsuranceRate / 100);
+            const unemploymentInsurance = baseForUnemployment * (unemploymentInsuranceRate / 100);
+
+            const totalInsurance = socialInsurance + healthInsurance + unemploymentInsurance;
+
+            const insuranceDetails = {
+                socialInsurance,
+                healthInsurance,
+                unemploymentInsurance,
+                totalInsurance,
+                insuranceSalarySocial: baseForSocialHealth, 
+                insuranceSalaryUnemployment: baseForUnemployment
+            };
+
+            // Tính toán cho cả hai hệ thống thuế
+            const oldResult = calculateTaxForSystem(grossSalary, dependents, insuranceDetails, oldPersonalDeduction, oldDependentDeduction, oldTaxBrackets, "2023");
+            const newResult = calculateTaxForSystem(grossSalary, dependents, insuranceDetails, newPersonalDeduction, newDependentDeduction, newTaxBrackets, "2026");
+
+            // Hiển thị kết quả
+            const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'block';
+
+            let comparisonText = '';
+            let comparisonColor = '';
+            const diff = newResult.netSalary - oldResult.netSalary;
+
+            if (diff > 0) {
+                comparisonText = `Bạn **tiết kiệm** được ${formatVND(Math.abs(diff))} mỗi tháng`;
+                comparisonColor = '#28a745';
+            } else if (diff < 0) {
+                comparisonText = `Bạn **đóng nhiều hơn** ${formatVND(Math.abs(diff))} mỗi tháng`;
+                comparisonColor = '#dc3545';
+            } else {
+                comparisonText = `Lương Net không thay đổi.`;
+                comparisonColor = '#666';
+            }
+
+
+            let html = `
+                <div style="background: #f0f0f0; border: 2px solid #007bff; padding: 20px; border-radius: 8px; margin-bottom: 20px; text-align: center;">
+                    <h3>So sánh thu nhập NET</h3>
+                    <div class="comparison-section">
+                        <div>
+                            <span style="color: #666; font-weight: bold;">${formatVND(oldResult.netSalary)}</span>
+                            <br><span style="font-size: 12px;">(Hệ thống 2023)</span>
+                        </div>
+                        <div>
+                            <span style="color: #007bff; font-weight: bold;">${formatVND(newResult.netSalary)}</span>
+                            <br><span style="font-size: 16px;">(Hệ thống 2026)</span>
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px; font-weight: bold; color: ${comparisonColor};">
+                        ${comparisonText}
+                    </div>
+                </div>
+            `;
+            resultDiv.innerHTML = html;
+
+            const breakdownDiv = document.getElementById('breakdown');
+            
+            let taxDiffText = '';
+            let netDiffText = '';
+            const taxDiff = newResult.tax - oldResult.tax;
+            const netDiff = newResult.netSalary - oldResult.netSalary;
+            
+            if (taxDiff < 0) {
+                taxDiffText = `(Thuế thấp hơn)`;
+            } else if (taxDiff > 0) {
+                taxDiffText = `(Thuế cao hơn)`;
+            }
+            
+            if (netDiff > 0) {
+                netDiffText = `(Tốt hơn)`;
+            } else if (netDiff < 0) {
+                netDiffText = `(Kém hơn)`;
+            }
+
+            breakdownDiv.innerHTML = `
+                <div style="display: flex; gap: 15px;">
+                    <div style="flex: 1; border: 1px solid #ddd; padding: 15px; border-radius: 5px;">
+                        <h3>Hệ thống 2023</h3>
+                        ${oldResult.html}
+                    </div>
+                    <div style="flex: 1; border: 1px solid #007bff; padding: 15px; border-radius: 5px;">
+                        <h3>Hệ thống 2026</h3>
+                        ${newResult.html}
+                    </div>
+                </div>
+                <div style="margin-top: 20px; border: 1px solid #ddd; padding: 15px; border-radius: 5px;">
+                    <p>Chênh lệch Thuế TNCN: <strong>${formatVND(taxDiff)}</strong> ${taxDiffText}</p>
+                    <p>Chênh lệch Lương Net: <strong>${formatVND(netDiff)}</strong> ${netDiffText}</p>
+                    <p>Chênh lệch Thuế TNCN hàng năm: <strong>${formatVND(taxDiff * 12)}</strong></p>
+                </div>
+            `;
+            // Cập nhật lại style inline để sử dụng class/style mới
+            const comparisonDiv = resultDiv.querySelector('.comparison-section');
+            if(comparisonDiv) {
+                 // Áp dụng lại kích thước font đã điều chỉnh (desktop)
+                 comparisonDiv.querySelector('div:first-child span:first-child').style.fontSize = '20px'; 
+                 comparisonDiv.querySelector('div:last-child span:first-child').style.fontSize = '26px';
+            }
+
+            // Đây là đoạn code để áp dụng font size nhỏ hơn trên mobile 
+            // nếu người dùng sử dụng trình duyệt di động (dựa trên viewport)
+            if (window.matchMedia("(max-width: 650px)").matches) {
+                 if(comparisonDiv) {
+                     comparisonDiv.querySelector('div:first-child span:first-child').style.fontSize = '18px'; 
+                     comparisonDiv.querySelector('div:last-child span:first-child').style.fontSize = '22px';
+                 }
+             }
+        }
+
+        function calculateTaxForSystem(grossSalary, dependents, insuranceDetails, personalDeduction, dependentDeduction, taxBrackets, year) {
+            
+            const totalInsurance = insuranceDetails.totalInsurance;
+            
+            const totalDeduction = personalDeduction + (dependents * dependentDeduction) + totalInsurance;
+            const taxableIncome = Math.max(0, grossSalary - totalDeduction);
+
+            let tax = 0;
+            let remainingIncome = taxableIncome;
+            let taxBreakdown = [];
+
+            // Tính thuế lũy tiến
+            for (const bracket of taxBrackets) {
+                if (remainingIncome <= 0) break;
+
+                const taxableAtThisBracket = Math.min(remainingIncome, bracket.max - bracket.min);
+                const taxAtThisBracket = taxableAtThisBracket * bracket.rate;
+
+                if (taxAtThisBracket > 0) {
+                    tax += taxAtThisBracket;
+                    taxBreakdown.push({
+                        range: `${formatVND(bracket.min)} - ${bracket.max === Infinity ? 'Trên' : formatVND(bracket.max)}`,
+                        rate: `${(bracket.rate * 100).toFixed(0)}%`,
+                        taxAmount: taxAtThisBracket
+                    });
+                }
+                remainingIncome -= taxableAtThisBracket;
+            }
+
+            const netSalary = grossSalary - totalInsurance - tax;
+
+            // HTML hiển thị kết quả
+            let html = `
+                <p>Lương Gross hàng tháng: <strong>${formatVND(grossSalary)}</strong></p>
+                <hr>
+                <h4>Các khoản Giảm trừ & Bảo hiểm</h4>
+                <p>Giảm trừ bản thân: <strong>${formatVND(personalDeduction)}</strong></p>
+                <p>Giảm trừ người phụ thuộc (${dependents} người @ ${formatVND(dependentDeduction)}/người): <strong>${formatVND(dependents * dependentDeduction)}</strong></p>
+                <p>Bảo hiểm Xã hội (8% của ${formatVND(insuranceDetails.insuranceSalarySocial)}): <strong>${formatVND(insuranceDetails.insuranceSalarySocial > 0 ? insuranceDetails.socialInsurance : 0)}</strong></p>
+                <p>Bảo hiểm Y tế (1.5% của ${formatVND(insuranceDetails.insuranceSalarySocial)}): <strong>${formatVND(insuranceDetails.insuranceSalarySocial > 0 ? insuranceDetails.healthInsurance : 0)}</strong></p>
+                <p>Bảo hiểm Thất nghiệp (1% của ${formatVND(insuranceDetails.insuranceSalaryUnemployment)}): <strong>${formatVND(insuranceDetails.insuranceSalaryUnemployment > 0 ? insuranceDetails.unemploymentInsurance : 0)}</strong></p>
+                <p>Tổng Giảm trừ & Bảo hiểm: <strong>${formatVND(totalDeduction)}</strong></p>
+                <hr>
+                <h4>Tính Thuế</h4>
+                <p>Thu nhập chịu thuế: <strong>${formatVND(taxableIncome)}</strong></p>
+                <p>Chi tiết bậc thuế:</p>
+                <ul>
+                    ${taxBreakdown.map(bracket => `
+                        <li>Bậc ${bracket.range} @ ${bracket.rate}: ${formatVND(bracket.taxAmount)}</li>
+                    `).join('')}
+                </ul>
+                <hr>
+                <p>Tổng Thuế TNCN: <strong>${formatVND(tax)}</strong></p>
+                <p><strong>Lương Net hàng tháng: ${formatVND(netSalary)}</strong></p>
+                <p>Thuế suất hiệu dụng: ${((tax / grossSalary) * 100).toFixed(2)}%</p>
+                <p>Lương Net hàng năm: ${formatVND(netSalary * 12)}</p>
+            `;
+
+            return { tax, netSalary, html };
+        }
+
+        function formatVND(amount) {
+            return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', minimumFractionDigits: 0 }).format(Math.round(amount));
+        }
+    </script>
+</body>
+</html>
